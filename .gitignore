@@ -1,0 +1,14 @@
+out/
+dist/
+build/
+release/
+.venv/
+__pycache__/
+*.pyc
+*.bak
+*.pdf
+*.jpg
+*.jpeg
+*.png
+*.zip
+.DS_Store

@@ -1,0 +1,6 @@
+Pillow>=10.4
+requests>=2.32
+platformdirs>=4.2
+pyside6>=6.7
+pymupdf>=1.27
+keyboard>=0.13.5
