@@ -11,6 +11,8 @@ if (!(Test-Path ".venv")) {
 & .\.venv\Scripts\python.exe -m pip install -r requirements-rag.txt
 & .\.venv\Scripts\python.exe -m pip install -r requirements-ui.txt
 & .\.venv\Scripts\python.exe -m pip install -U pyinstaller
+# PyInstaller may attempt to collect chromadb.server.fastapi; ensure optional deps exist for packaging.
+& .\.venv\Scripts\python.exe -m pip install -U fastapi starlette
 
 Remove-Item -Recurse -Force dist, build -ErrorAction SilentlyContinue
 
@@ -42,4 +44,3 @@ if (Test-Path "$releaseDir\\ExamRAG.zip") { Remove-Item "$releaseDir\\ExamRAG.zi
 Compress-Archive -Path "$releaseDir\\*" -DestinationPath "$releaseDir\\ExamRAG.zip" -Force
 
 Write-Host "OK: release\\ExamRAG.zip"
-
