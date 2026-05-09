@@ -315,10 +315,9 @@ class MainWindow(QtWidgets.QMainWindow):
         root = QtWidgets.QWidget()
         self.setCentralWidget(root)
         layout = QtWidgets.QVBoxLayout(root)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
-        # ========== SETTINGS GROUP ==========
-        settings = QtWidgets.QGroupBox("Settings")
-        form = QtWidgets.QFormLayout(settings)
         self.api_key = QtWidgets.QLineEdit(self.cfg.openrouter_api_key)
         self.api_key.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
         self.ocr_model = QtWidgets.QComboBox()
@@ -343,6 +342,23 @@ class MainWindow(QtWidgets.QMainWindow):
         self.retrieval_mode = QtWidgets.QComboBox()
         self.retrieval_mode.addItems(["hybrid", "vector"])
         self.retrieval_mode.setCurrentText(self.cfg.retrieval_mode)
+        self.retry_x2 = QtWidgets.QCheckBox("x2")
+        self.retry_x3 = QtWidgets.QCheckBox("x3")
+        retry_count = str(getattr(self.cfg, "retrieval_retry_count", "1") or "1")
+        self.retry_x2.setChecked(retry_count == "2")
+        self.retry_x3.setChecked(retry_count == "3")
+        self.retry_x2.toggled.connect(lambda checked: self._on_retry_toggle("2", checked))
+        self.retry_x3.toggled.connect(lambda checked: self._on_retry_toggle("3", checked))
+        retry_widget = QtWidgets.QWidget()
+        retry_layout = QtWidgets.QHBoxLayout(retry_widget)
+        retry_layout.setContentsMargins(0, 0, 0, 0)
+        retry_layout.addWidget(self.retry_x2)
+        retry_layout.addWidget(self.retry_x3)
+        retry_layout.addStretch()
+        self.reverify_count = QtWidgets.QSpinBox()
+        self.reverify_count.setRange(1, 5)
+        self.reverify_count.setValue(int(self.cfg.reverify_count) if str(self.cfg.reverify_count).isdigit() else 1)
+        self.reverify_count.setSuffix(" times")
         self.calls_mode = QtWidgets.QComboBox()
         self.calls_mode.addItems(["two_step", "single_step"])
         self.calls_mode.setCurrentText(self.cfg.ocr_calls_mode)
@@ -353,26 +369,24 @@ class MainWindow(QtWidgets.QMainWindow):
         self.answer_max_tokens.setRange(200, 8000)
         self.answer_max_tokens.setValue(int(self.cfg.answer_max_tokens) if str(self.cfg.answer_max_tokens).isdigit() else 2000)
 
-        save_btn = QtWidgets.QPushButton("Save")
-        save_btn.clicked.connect(self._save_settings)
+        self.save_btn = QtWidgets.QPushButton("Save Settings")
+        self.save_btn.setObjectName("PrimaryButton")
+        self.save_btn.clicked.connect(self._save_settings)
 
-        form.addRow("OpenRouter key", self.api_key)
-        form.addRow("OCR model", self.ocr_model)
-        form.addRow("Answer model", self.answer_model)
-        form.addRow("Embed model", self.embed_model)
-        form.addRow("Chunking", self.chunking_mode)
-        form.addRow("Retrieval", self.retrieval_mode)
-        form.addRow("OCR calls mode", self.calls_mode)
-        form.addRow("OCR max_tokens", self.ocr_max_tokens)
-        form.addRow("Answer max_tokens", self.answer_max_tokens)
-        form.addRow("", save_btn)
-        layout.addWidget(settings)
+        self.tabs = QtWidgets.QTabWidget()
+        self.tabs.setDocumentMode(True)
+        layout.addWidget(self.tabs, 1)
 
-       # ========== LIBRARY / INDEX GROUP ==========
-        ingest = QtWidgets.QGroupBox("Library / Index")
-        h_layout = QtWidgets.QHBoxLayout(ingest)
+        quick_tab = QtWidgets.QWidget()
+        quick_layout = QtWidgets.QVBoxLayout(quick_tab)
+        quick_layout.setContentsMargins(0, 0, 0, 0)
+        quick_layout.setSpacing(12)
+
+        library_card = self._create_card("Library")
+        library_layout = QtWidgets.QVBoxLayout(library_card)
+        library_layout.setSpacing(10)
         self.index_path_label = QtWidgets.QLabel("Index folder: not selected")
-        self.index_path_label.setStyleSheet("color: #666; font-size: 11px;")
+        self.index_path_label.setWordWrap(True)
         self.index_path_label.setMinimumWidth(420)
         browse = QtWidgets.QPushButton("Add PDF…")
         browse.clicked.connect(self._pick_pdf)
@@ -381,47 +395,39 @@ class MainWindow(QtWidgets.QMainWindow):
         build.clicked.connect(self._build_index)
         build.setEnabled(False)
         self.load_index_btn = QtWidgets.QPushButton("📂 Load Index from Folder")
+        self.load_index_btn.setObjectName("PrimaryButton")
         self.load_index_btn.clicked.connect(self._load_index_from_folder)
-        self.load_index_btn.setStyleSheet("background-color: #3a6ea5; color: white;")
-        h_layout.addWidget(self.index_path_label, 1)
-        h_layout.addWidget(browse)
-        h_layout.addWidget(build)
-        h_layout.addWidget(self.load_index_btn)
-        layout.addWidget(ingest)
+        library_actions = QtWidgets.QHBoxLayout()
+        library_actions.addWidget(self.index_path_label, 1)
+        library_actions.addWidget(self.load_index_btn)
+        library_layout.addLayout(library_actions)
+        quick_layout.addWidget(library_card)
 
-        # ========== CAPTURE GROUP ==========
-        capture_group = QtWidgets.QGroupBox("Screen Capture")
-        capture_layout = QtWidgets.QHBoxLayout(capture_group)
+        capture_card = self._create_card("Screen Capture")
+        capture_layout = QtWidgets.QVBoxLayout(capture_card)
+        capture_layout.setSpacing(10)
         self.capture_btn = QtWidgets.QPushButton("📸 Capture (Ctrl+Shift+X)")
-        self.capture_btn.setStyleSheet("background-color: #2b5e2b; color: white; font-weight: bold;")
+        self.capture_btn.setObjectName("CaptureButton")
         self.capture_btn.clicked.connect(self._capture_screen)
         self.capture_status = QtWidgets.QLabel("Ready")
-        capture_layout.addWidget(self.capture_btn, 1)
+        self.capture_btn.setMinimumHeight(52)
+        capture_layout.addWidget(self.capture_btn)
         capture_layout.addWidget(self.capture_status)
-        layout.addWidget(capture_group)
+        quick_layout.addWidget(capture_card)
 
-        # ========== OVERLAY CONTROLS ==========
-        overlay_group = QtWidgets.QGroupBox("Overlay")
-        overlay_layout = QtWidgets.QHBoxLayout(overlay_group)
-        overlay_layout.addWidget(QtWidgets.QLabel("Answer overlay size:"))
+        workspace_card = self._create_card("Workspace")
+        workspace_layout = QtWidgets.QVBoxLayout(workspace_card)
+        workspace_layout.setSpacing(10)
+        overlay_layout = QtWidgets.QHBoxLayout()
+        overlay_layout.addWidget(QtWidgets.QLabel("Overlay size"))
         self.overlay_size = QtWidgets.QComboBox()
         self.overlay_size.addItems(["Medium", "Small", "Large"])
         self.overlay_size.setCurrentText("Medium")
         self.overlay_size.currentTextChanged.connect(self._on_overlay_size_changed)
         overlay_layout.addWidget(self.overlay_size)
-        overlay_hint = QtWidgets.QLabel("Drag the overlay with mouse to reposition.")
-        overlay_hint.setStyleSheet("color: #666; font-size: 11px;")
-        overlay_layout.addWidget(overlay_hint, 1)
-        layout.addWidget(overlay_group)
+        overlay_layout.addStretch()
+        workspace_layout.addLayout(overlay_layout)
 
-        # ========== PROGRESS & STATUS ==========
-        self.progress = QtWidgets.QProgressBar()
-        self.progress.setRange(0, 100)
-        self.status = QtWidgets.QLabel("Ready")
-        layout.addWidget(self.progress)
-        layout.addWidget(self.status)
-
-        # ========== QUESTION / ANSWER / SOURCES ==========
         splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
         self.question = QtWidgets.QPlainTextEdit()
         self.question.setPlaceholderText("Question will appear here (or enter manually)")
@@ -433,16 +439,214 @@ class MainWindow(QtWidgets.QMainWindow):
         splitter.addWidget(self.answer)
         splitter.addWidget(self.sources)
         splitter.setSizes([160, 280, 260])
-        layout.addWidget(splitter, 1)
-
-        # ========== BUTTONS ==========
+        workspace_layout.addWidget(splitter, 1)
         btn_layout = QtWidgets.QHBoxLayout()
         self.ask_btn = QtWidgets.QPushButton("🔍 Ask (manual question)")
+        self.ask_btn.setObjectName("DarkButton")
         self.ask_btn.clicked.connect(self._on_ask_clicked)
-        self.ask_btn.setStyleSheet("background-color: #1e3a5f; color: white; font-weight: bold;")
         btn_layout.addStretch()
         btn_layout.addWidget(self.ask_btn)
-        layout.addLayout(btn_layout)
+        workspace_layout.addLayout(btn_layout)
+        quick_layout.addWidget(workspace_card, 1)
+        self.tabs.addTab(quick_tab, "Quick Start")
+
+        settings_tab = QtWidgets.QWidget()
+        settings_layout = QtWidgets.QVBoxLayout(settings_tab)
+        settings_layout.setContentsMargins(0, 0, 0, 0)
+        settings_layout.setSpacing(12)
+
+        api_card = self._create_card("API")
+        api_form = QtWidgets.QFormLayout(api_card)
+        api_form.setContentsMargins(16, 16, 16, 16)
+        api_form.addRow("OpenRouter Key", self.api_key)
+        settings_layout.addWidget(api_card)
+
+        models_card = self._create_card("Models")
+        models_form = QtWidgets.QFormLayout(models_card)
+        models_form.setContentsMargins(16, 16, 16, 16)
+        models_form.addRow("OCR", self.ocr_model)
+        models_form.addRow("Answer", self.answer_model)
+        models_form.addRow("Embed", self.embed_model)
+        settings_layout.addWidget(models_card)
+
+        quality_card = self._create_card("Quality Control")
+        quality_form = QtWidgets.QFormLayout(quality_card)
+        quality_form.setContentsMargins(16, 16, 16, 16)
+        quality_form.addRow("Retry reformulate", retry_widget)
+        quality_form.addRow("Re-verify answer", self.reverify_count)
+        settings_layout.addWidget(quality_card)
+        settings_layout.addWidget(self.save_btn, 0, QtCore.Qt.AlignmentFlag.AlignLeft)
+        settings_layout.addStretch(1)
+        self.tabs.addTab(settings_tab, "Settings")
+
+        advanced_tab = QtWidgets.QWidget()
+        advanced_layout = QtWidgets.QVBoxLayout(advanced_tab)
+        advanced_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_layout.setSpacing(12)
+
+        processing_card = self._create_card("Processing")
+        processing_form = QtWidgets.QFormLayout(processing_card)
+        processing_form.setContentsMargins(16, 16, 16, 16)
+        processing_form.addRow("Chunking", self.chunking_mode)
+        processing_form.addRow("Retrieval", self.retrieval_mode)
+        processing_form.addRow("OCR calls", self.calls_mode)
+        advanced_layout.addWidget(processing_card)
+
+        tokens_card = self._create_card("Token Limits")
+        tokens_form = QtWidgets.QFormLayout(tokens_card)
+        tokens_form.setContentsMargins(16, 16, 16, 16)
+        tokens_form.addRow("OCR max", self.ocr_max_tokens)
+        tokens_form.addRow("Answer max", self.answer_max_tokens)
+        advanced_layout.addWidget(tokens_card)
+
+        build_card = self._create_card("Index Build")
+        build_layout = QtWidgets.QVBoxLayout(build_card)
+        build_layout.setSpacing(10)
+        build_layout.addWidget(QtWidgets.QLabel("Optional local index build tools"))
+        build_actions = QtWidgets.QHBoxLayout()
+        build_actions.addWidget(browse)
+        build_actions.addWidget(build)
+        build_actions.addStretch()
+        build_layout.addLayout(build_actions)
+        advanced_layout.addWidget(build_card)
+        advanced_layout.addStretch(1)
+        self.tabs.addTab(advanced_tab, "Advanced")
+
+        status_card = self._create_card("Status")
+        status_layout = QtWidgets.QVBoxLayout(status_card)
+        status_layout.setSpacing(8)
+        self.progress = QtWidgets.QProgressBar()
+        self.progress.setRange(0, 100)
+        self.status = QtWidgets.QLabel("Ready")
+        status_layout.addWidget(self.progress)
+        status_layout.addWidget(self.status)
+        layout.addWidget(status_card)
+        self._apply_styles()
+
+    def _create_card(self, title: str) -> QtWidgets.QGroupBox:
+        card = QtWidgets.QGroupBox(title)
+        card.setObjectName("Card")
+        return card
+
+    def _apply_styles(self) -> None:
+        self.setStyleSheet(
+            """
+            QMainWindow, QWidget {
+                background: #ffffff;
+                color: #212529;
+                font-family: "Inter", "Segoe UI";
+                font-size: 13px;
+            }
+            QTabWidget::pane {
+                border: 1px solid #e9ecef;
+                border-radius: 8px;
+                background: #ffffff;
+                top: -1px;
+            }
+            QTabBar::tab {
+                background: #f1f3f5;
+                border: 1px solid #dee2e6;
+                padding: 10px 18px;
+                margin-right: 6px;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                min-width: 120px;
+            }
+            QTabBar::tab:selected {
+                background: #ffffff;
+                border-bottom-color: #ffffff;
+                color: #0d6efd;
+                font-weight: 600;
+            }
+            QGroupBox#Card {
+                background: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 10px;
+                font-weight: 600;
+            }
+            QGroupBox#Card::title {
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 4px;
+            }
+            QLineEdit, QComboBox, QSpinBox, QPlainTextEdit {
+                background: #ffffff;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                padding: 7px 10px;
+                selection-background-color: #cfe2ff;
+            }
+            QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPlainTextEdit:focus {
+                border: 1px solid #0d6efd;
+            }
+            QPlainTextEdit {
+                padding: 10px;
+            }
+            QPushButton {
+                background: #ffffff;
+                color: #212529;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                padding: 8px 14px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                background: #f1f3f5;
+            }
+            QPushButton:pressed {
+                background: #e9ecef;
+            }
+            QPushButton:disabled {
+                color: #adb5bd;
+                background: #f8f9fa;
+            }
+            QPushButton#PrimaryButton {
+                background: #0d6efd;
+                color: white;
+                border: none;
+            }
+            QPushButton#PrimaryButton:hover {
+                background: #0b5ed7;
+            }
+            QPushButton#CaptureButton {
+                background: #198754;
+                color: white;
+                border: none;
+                font-size: 15px;
+                font-weight: 600;
+            }
+            QPushButton#CaptureButton:hover {
+                background: #157347;
+            }
+            QPushButton#DarkButton {
+                background: #212529;
+                color: white;
+                border: none;
+            }
+            QPushButton#DarkButton:hover {
+                background: #343a40;
+            }
+            QLabel {
+                background: transparent;
+            }
+            QProgressBar {
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                background: #ffffff;
+                text-align: center;
+                min-height: 18px;
+            }
+            QProgressBar::chunk {
+                background: #0d6efd;
+                border-radius: 5px;
+            }
+            QCheckBox {
+                spacing: 8px;
+            }
+            """
+        )
 
     def _on_overlay_size_changed(self, text: str) -> None:
         preset = (text or "Medium").strip().lower()
@@ -453,6 +657,52 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.overlay.set_preset_size("medium")
 
+    def _on_retry_toggle(self, level: str, checked: bool) -> None:
+        if not checked:
+            return
+        if level == "2":
+            self.retry_x3.blockSignals(True)
+            self.retry_x3.setChecked(False)
+            self.retry_x3.blockSignals(False)
+        elif level == "3":
+            self.retry_x2.blockSignals(True)
+            self.retry_x2.setChecked(False)
+            self.retry_x2.blockSignals(False)
+
+    def _get_retrieval_retry_count(self) -> int:
+        if self.retry_x3.isChecked():
+            return 3
+        if self.retry_x2.isChecked():
+            return 2
+        return 1
+
+    def _get_reverify_count(self) -> int:
+        return int(self.reverify_count.value())
+
+    @staticmethod
+    def _pick_best_comparison(comparisons: list[dict], options: dict[str, str]) -> dict:
+        if not comparisons:
+            return {"correct_option": "?", "confidence": 0.0, "reasoning": "", "correct_text": ""}
+
+        buckets: dict[str, list[dict]] = {}
+        for comparison in comparisons:
+            option = str(comparison.get("correct_option") or "?").strip().upper()
+            buckets.setdefault(option, []).append(comparison)
+
+        ranked = sorted(
+            buckets.items(),
+            key=lambda item: (
+                len(item[1]),
+                max(float(entry.get("confidence") or 0.0) for entry in item[1]),
+            ),
+            reverse=True,
+        )
+        selected_option, selected_group = ranked[0]
+        selected = max(selected_group, key=lambda entry: float(entry.get("confidence") or 0.0))
+        if selected_option in options and not selected.get("correct_text"):
+            selected["correct_text"] = options[selected_option]
+        return selected
+
     def _save_settings(self) -> None:
         self.cfg.openrouter_api_key = self.api_key.text().strip()
         self.cfg.ocr_model = self.ocr_model.currentText().strip()
@@ -460,6 +710,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cfg.embed_model = self.embed_model.currentText().strip()
         self.cfg.chunking_mode = self.chunking_mode.currentText().strip()
         self.cfg.retrieval_mode = self.retrieval_mode.currentText().strip()
+        self.cfg.retrieval_retry_count = str(self._get_retrieval_retry_count())
+        self.cfg.reverify_count = str(self._get_reverify_count())
         self.cfg.ocr_calls_mode = self.calls_mode.currentText().strip()
         self.cfg.ocr_max_tokens = str(int(self.ocr_max_tokens.value()))
         self.cfg.answer_max_tokens = str(int(self.answer_max_tokens.value()))
@@ -723,6 +975,8 @@ class MainWindow(QtWidgets.QMainWindow):
         ocr_model = self.ocr_model.currentText().strip()
         answer_model = self.answer_model.currentText().strip()
         retrieval_mode = self.retrieval_mode.currentText().strip()
+        retrieval_retry_count = self._get_retrieval_retry_count()
+        reverify_count = self._get_reverify_count()
         ocr_max_tokens = int(self.ocr_max_tokens.value())
         answer_max_tokens = int(self.answer_max_tokens.value())
 
@@ -835,71 +1089,109 @@ class MainWindow(QtWidgets.QMainWindow):
                     )
                 )
 
-                # 2. Переформулируем запрос для retrieval (LLM call #1)
-                self.ui_call.emit(lambda: self.capture_status.setText("LLM: переформулировка запроса…"))
-                self.ui_call.emit(lambda: self.overlay.start_loading("Переформулировка"))
                 retrieval_input = f"{question}\n\nВарианты:\n{options_text}" if options_text.strip() else question
-                rewritten_query, usage_rewrite = client.reformulate_for_retrieval(
-                    question=retrieval_input,
-                    model=answer_model,
-                )
-                rewritten_query = rewritten_query.strip()
-                query_terms = [t for t in rewritten_query.replace("ё", "е").split() if len(t) > 3]
-                if not rewritten_query or _looks_like_ui_chrome(rewritten_query) or len(query_terms) < 4:
-                    rewritten_query = retrieval_input
-                self.ui_call.emit(lambda rq=rewritten_query: self.capture_status.setText(f"Retrieval query: {rq[:120]}"))
-                self.ui_call.emit(
-                    lambda rq=rewritten_query: self.sources.setPlainText(
-                        f"Retrieval query:\n{rq}\n\nSources from textbook will appear here"
-                    )
-                )
+                usage_rewrite_total = 0.0
+                usage_judge_total = 0.0
+                search_results: list[dict] = []
+                rewritten_query = retrieval_input
+                last_retry_reason = ""
+                last_score = 0.0
+                retry_note = ""
 
-                # 3. Поиск в индексе (по переформулированному запросу)
-                self.ui_call.emit(lambda: self.capture_status.setText("Retrieval…"))
-                self.ui_call.emit(lambda: self.overlay.start_loading("Поиск по учебнику"))
-                search_results = index.search(
-                    query=rewritten_query,
-                    top_k=5,
-                    mode=retrieval_mode,
-                )
+                for attempt_idx in range(retrieval_retry_count):
+                    attempt_no = attempt_idx + 1
+                    self.ui_call.emit(
+                        lambda attempt_no=attempt_no, total=retrieval_retry_count: self.capture_status.setText(
+                            f"LLM: переформулировка запроса {attempt_no}/{total}…"
+                        )
+                    )
+                    self.ui_call.emit(lambda: self.overlay.start_loading("Переформулировка"))
+
+                    reformulation_input = retrieval_input
+                    if retry_note:
+                        reformulation_input = (
+                            f"{retrieval_input}\n\n"
+                            f"Предыдущий запрос: {rewritten_query}\n"
+                            f"Проблема: {retry_note}\n"
+                            "Сформулируй новый поисковый запрос точнее и ближе к теме."
+                        )
+
+                    rewritten_query, usage_rewrite = client.reformulate_for_retrieval(
+                        question=reformulation_input,
+                        model=answer_model,
+                    )
+                    usage_rewrite_total += usage_rewrite.cost or 0.0
+                    rewritten_query = rewritten_query.strip()
+                    query_terms = [t for t in rewritten_query.replace("ё", "е").split() if len(t) > 3]
+                    if not rewritten_query or _looks_like_ui_chrome(rewritten_query) or len(query_terms) < 4:
+                        rewritten_query = retrieval_input
+
+                    self.ui_call.emit(
+                        lambda rq=rewritten_query, attempt_no=attempt_no, total=retrieval_retry_count: self.capture_status.setText(
+                            f"Retrieval {attempt_no}/{total}: {rq[:100]}"
+                        )
+                    )
+                    self.ui_call.emit(
+                        lambda rq=rewritten_query, attempt_no=attempt_no, total=retrieval_retry_count: self.sources.setPlainText(
+                            f"Attempt {attempt_no}/{total}\n\nRetrieval query:\n{rq}\n\nSources from textbook will appear here"
+                        )
+                    )
+
+                    self.ui_call.emit(lambda: self.capture_status.setText("Retrieval…"))
+                    self.ui_call.emit(lambda: self.overlay.start_loading("Поиск по учебнику"))
+                    search_results = index.search(
+                        query=rewritten_query,
+                        top_k=5,
+                        mode=retrieval_mode,
+                    )
+
+                    if not search_results:
+                        last_retry_reason = "Поиск не нашёл ни одного фрагмента"
+                        retry_note = last_retry_reason
+                        continue
+
+                    sources_preview = []
+                    for i, r in enumerate(search_results[:5]):
+                        page = r.get("page", "?")
+                        text_preview = r["text"][:500] + "..." if len(r["text"]) > 500 else r["text"]
+                        sources_preview.append(f"[{i+1}] стр. {page}\n{text_preview}")
+                    self.ui_call.emit(
+                        lambda rq=rewritten_query, sp=sources_preview, attempt_no=attempt_no, total=retrieval_retry_count: self.sources.setPlainText(
+                            f"Attempt {attempt_no}/{total}\n\nRetrieval query:\n{rq}\n\n---\n\n" + "\n\n---\n\n".join(sp)
+                        )
+                    )
+
+                    best = search_results[0]
+                    self.ui_call.emit(lambda: self.capture_status.setText("LLM: оценка релевантности…"))
+                    self.ui_call.emit(lambda: self.overlay.start_loading("Проверка релевантности"))
+                    judge, usage_judge = client.judge_retrieval_relevance(
+                        question=question,
+                        retrieved_text=str(best.get("text") or ""),
+                        model=answer_model,
+                        retries=1,
+                    )
+                    usage_judge_total += usage_judge.cost or 0.0
+                    try:
+                        score = float(judge.get("score") or 0.0)
+                    except Exception:
+                        score = 0.0
+                    last_score = score
+                    is_relevant = bool(judge.get("is_relevant"))
+                    reason = str(judge.get("reason") or "").strip()
+                    if is_relevant and score >= 0.55:
+                        last_retry_reason = ""
+                        break
+
+                    last_retry_reason = reason or "Judge посчитал результат нерелевантным"
+                    retry_note = f"{last_retry_reason}. score={score:.2f}"
+                    search_results = []
 
                 if not search_results:
-                    self.ui_call.emit(lambda: self.answer.setPlainText("❌ В учебнике ничего не найдено по этому вопросу"))
-                    self.ui_call.emit(lambda: self.overlay.show_message("❌ В учебнике ничего не найдено по этому вопросу"))
-                    return
-
-                sources_preview = []
-                for i, r in enumerate(search_results[:5]):
-                    page = r.get("page", "?")
-                    text_preview = r["text"][:500] + "..." if len(r["text"]) > 500 else r["text"]
-                    sources_preview.append(f"[{i+1}] стр. {page}\n{text_preview}")
-                self.ui_call.emit(
-                    lambda rq=rewritten_query, sp=sources_preview: self.sources.setPlainText(
-                        f"Retrieval query:\n{rq}\n\n---\n\n" + "\n\n---\n\n".join(sp)
-                    )
-                )
-
-                # 4. Проверяем релевантность top-1 (LLM call #2)
-                best = search_results[0]
-                self.ui_call.emit(lambda: self.capture_status.setText("LLM: оценка релевантности…"))
-                self.ui_call.emit(lambda: self.overlay.start_loading("Проверка релевантности"))
-                judge, usage_judge = client.judge_retrieval_relevance(
-                    question=question,
-                    retrieved_text=str(best.get("text") or ""),
-                    model=answer_model,
-                    retries=1,
-                )
-                try:
-                    score = float(judge.get("score") or 0.0)
-                except Exception:
-                    score = 0.0
-                is_relevant = bool(judge.get("is_relevant"))
-                if (not is_relevant) or score < 0.55:
-                    reason = str(judge.get("reason") or "").strip()
                     msg = (
-                        "⚠️ Похоже, retrieval принёс нерелевантный фрагмент.\n"
-                        f"score={score:.2f}\n"
-                        + (f"Причина: {reason}\n" if reason else "")
+                        "⚠️ Не удалось подобрать релевантный запрос к векторной базе.\n"
+                        f"Попыток: {retrieval_retry_count}\n"
+                        + (f"Последняя причина: {last_retry_reason}\n" if last_retry_reason else "")
+                        + (f"Последний score: {last_score:.2f}\n" if last_score else "")
                         + "Ответ не сформирован."
                     )
                     self.ui_call.emit(lambda msg=msg: self.answer.setPlainText(msg))
@@ -918,24 +1210,35 @@ class MainWindow(QtWidgets.QMainWindow):
                 sources_text = "\n\n---\n\n".join(ctx_blocks)
 
                 # 6. Сравниваем варианты с учебником (LLM call #3 = финальный ответ)
-                self.ui_call.emit(lambda: self.capture_status.setText("LLM: финальный ответ…"))
-                self.ui_call.emit(lambda: self.overlay.start_loading("Финальный ответ"))
-                comparison, usage2 = client.compare_multiple_choice(
-                    question=question,
-                    options=options,
-                    sources_text=sources_text,
-                    model=answer_model,
-                    max_tokens=answer_max_tokens,
-                    retries=1,
-                )
+                comparisons: list[dict] = []
+                usage_answer_total = 0.0
+                for verify_idx in range(reverify_count):
+                    verify_no = verify_idx + 1
+                    self.ui_call.emit(
+                        lambda verify_no=verify_no, total=reverify_count: self.capture_status.setText(
+                            f"LLM: финальный ответ {verify_no}/{total}…"
+                        )
+                    )
+                    self.ui_call.emit(lambda: self.overlay.start_loading("Финальный ответ"))
+                    comparison, usage2 = client.compare_multiple_choice(
+                        question=question,
+                        options=options,
+                        sources_text=sources_text,
+                        model=answer_model,
+                        max_tokens=answer_max_tokens,
+                        retries=1,
+                    )
+                    comparisons.append(comparison)
+                    usage_answer_total += usage2.cost or 0.0
 
-                correct_option = comparison.get("correct_option", "?")
-                confidence = comparison.get("confidence", 0)
-                reasoning = comparison.get("reasoning", "")
-                correct_text = comparison.get("correct_text", "")
+                best_comparison = self._pick_best_comparison(comparisons, options)
+                correct_option = best_comparison.get("correct_option", "?")
+                confidence = best_comparison.get("confidence", 0)
+                reasoning = best_comparison.get("reasoning", "")
+                correct_text = best_comparison.get("correct_text", "")
 
                 # 5. Формируем ответ
-                total_cost = (usage1.cost or 0) + (usage_rewrite.cost or 0) + (usage_judge.cost or 0) + (usage2.cost or 0)
+                total_cost = (usage1.cost or 0) + usage_rewrite_total + usage_judge_total + usage_answer_total
 
                 # Полный ответ в поле Answer
                                 # Полный ответ в поле Answer
@@ -945,6 +1248,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     f"⭐ Уверенность: {confidence*100:.0f}%\n\n"
                     f"📖 **Обоснование:**\n{reasoning}\n\n"
                     f"📝 **Текст ответа:**\n{correct_text}\n\n"
+                    f"🔁 **Проверок ответа:** {reverify_count}\n\n"
                     "---\n"
                     f"💰 Cost: ${total_cost:.6f}"
                 )

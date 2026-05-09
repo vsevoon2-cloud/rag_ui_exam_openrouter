@@ -1,16 +1,28 @@
 # ExamRAG
 
-ExamRAG is an open-source desktop app: **PDF OCR → local RAG index → screen capture Q&A**, powered by OpenRouter.
+## Install
 
-## Portable Windows build (no Python required on target PC)
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -U pip
+.\.venv\Scripts\python.exe -m pip install -r requirements-rag.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-ui.txt
+```
 
-Build on your machine:
-- `powershell -ExecutionPolicy Bypass -File tools\\build_release_windows.ps1`
+## Run
 
-Send `release\\ExamRAG.zip` to your friend. They run:
-- `run_examrag.bat`
+```powershell
+.\.venv\Scripts\python.exe main.py
+```
 
-Notes:
-- First run downloads the embedding model into the user profile cache (internet required).
-- The app stores config/index/cache under the user profile (no admin, no PATH).
- - If Windows SmartScreen warns, click "More info" → "Run anyway" (unsigned exe).
+## Build EXE
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\build_release_windows.ps1
+```
+
+## Run EXE
+
+```powershell
+release\run_examrag.bat
+```

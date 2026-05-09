@@ -39,6 +39,8 @@ class AppConfig:
     embed_model: str = "intfloat/multilingual-e5-large"
     chunking_mode: str = "page"
     retrieval_mode: str = "hybrid"  # "vector" | "hybrid"
+    retrieval_retry_count: str = "1"  # "1" | "2" | "3"
+    reverify_count: str = "1"  # "1".."5"
     ocr_calls_mode: str = "two_step"  # "two_step" | "single_step"
     last_pdf_path: str = ""
     ocr_max_tokens: str = "1400"
